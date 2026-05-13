@@ -8,6 +8,26 @@ type Middleware = {
   handler: (c: Context, next: Next) => Promise<Response | void>;
 };
 
+// The underlying `ws` library throws "WebSocket was closed before the
+// connection was established" as an Unhandled 'error' event when we close
+// a still-CONNECTING socket (the Mastra voice doesn't attach a low-level
+// error listener). Swallow that specific case so the dev server doesn't
+// crash; rethrow anything else.
+let voiceCrashGuardInstalled = false;
+function installVoiceCrashGuard() {
+  if (voiceCrashGuardInstalled) return;
+  voiceCrashGuardInstalled = true;
+  process.on("uncaughtException", (err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("WebSocket was closed before")) {
+      console.warn("[voice] ignored premature WS close:", msg);
+      return;
+    }
+    throw err;
+  });
+}
+installVoiceCrashGuard();
+
 type SSEEvent = { event: string; data: string };
 
 /**
@@ -169,6 +189,19 @@ const startRoute: Middleware = {
       const voice = await designer.getVoice();
       attachVoiceListeners(session, voice);
       await voice.connect();
+
+      // Fire-and-forget greeting. The `speaking` listener queues the audio
+      // chunks so the client receives them as soon as it subscribes to the
+      // SSE stream.
+      void voice
+        .speak("Hey there! I'm your design agent. What should we change first?")
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          session.queue.push({
+            event: "error",
+            data: JSON.stringify({ message: `greeting failed: ${message}` }),
+          });
+        });
     } catch (err) {
       await teardown(session);
       const message = err instanceof Error ? err.message : String(err);
