@@ -98,7 +98,9 @@ async function attachAgent(ws: WSContext): Promise<VoiceSession | null> {
     const bytes = Buffer.isBuffer(audio) ? audio : Buffer.from(audio);
     if (response_id) sendJSON(ws, { type: "audio.header", responseId: response_id });
     try {
-      ws.send(bytes);
+      // Buffer IS a Uint8Array at runtime; the cast only papers over
+      // Node's ArrayBufferLike generic vs hono's ArrayBuffer constraint.
+      ws.send(bytes as unknown as Uint8Array<ArrayBuffer>);
     } catch {
       /* socket closed */
     }
@@ -132,14 +134,8 @@ async function attachAgent(ws: WSContext): Promise<VoiceSession | null> {
   on("interrupted", (payload: unknown) => {
     const { response_id } = payload as { response_id?: string };
     if (response_id) cancelled.add(response_id);
-    // Fire-and-forget: short-circuit Inworld's buffer. `interrupt_response: true`
-    // already cancels server-side from VAD, but this kills any tail that's
-    // queued upstream.
-    try {
-      voice.cancelResponse(response_id);
-    } catch {
-      /* not exposed yet — older SDKs */
-    }
+    // `interrupt_response: true` already cancels the response server-side from
+    // VAD; the `cancelled` set above drops any tail chunks still in flight.
     sendJSON(ws, { type: "interrupted", responseId: response_id });
   });
 
