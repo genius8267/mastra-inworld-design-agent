@@ -161,16 +161,32 @@ async function attachAgent(ws: WSContext): Promise<VoiceSession | null> {
   }
 
   // Send initial state + ready signal, then a fire-and-forget greeting. The
-  // greeting's audio drains via the `speaking` listener; we don't await it
-  // because we want `ready` (and any other queued frames) to flow ASAP.
+  // greeting's audio drains via the `speaking` listener.
+  //
+  // NOT voice.speak(): per realtime-API semantics, speak()'s response.create
+  // carries per-response instructions ("Repeat the following text: …") that
+  // REPLACE the session instructions for that response — the model would
+  // repeat the greeting, lose every voice rule, and then improvise a markdown
+  // feature menu. It also plants the greeting in history as a user message.
+  // Instead: seed one user item (Anthropic rejects a response on an empty
+  // conversation) and trigger a bare answer() so the session instructions —
+  // voice rules included — govern the greeting.
   sendJSON(ws, { type: "state", state: siteState.get() });
   sendJSON(ws, { type: "ready" });
-  void voice
-    .speak("Hey there! I'm your design agent. What should we change first?")
-    .catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      sendJSON(ws, { type: "error", message: `greeting: ${message}` });
-    });
+  (voice as unknown as { sendEvent: (type: string, data: unknown) => void }).sendEvent(
+    "conversation.item.create",
+    {
+      item: {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "[A visitor just joined the session — greet them.]" }],
+      },
+    },
+  );
+  void voice.answer({}).catch((err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
+    sendJSON(ws, { type: "error", message: `greeting: ${message}` });
+  });
 
   const cleanup = async () => {
     try {
