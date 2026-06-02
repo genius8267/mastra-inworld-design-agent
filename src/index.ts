@@ -157,6 +157,46 @@ async function connectVoice(
 
   const cancelled = session.cancelled;
 
+  /* Watchdog wiring — at the RAW protocol layer, not the SDK's curated
+   * events. The SDK emits nothing when a tool call's argument JSON fails to
+   * parse (its catch path silently sends the error + response.create), which
+   * is exactly the path that precedes observed wedges. So instead:
+   *   - a response is OWED when we send response.create, the server opens
+   *     one (response.created), or the user's turn commits
+   *   - while owed, ANY wire event is a heartbeat (deltas reset the timer)
+   *   - response.done settles the debt (a tool follow-up re-arms via its
+   *     own response.create); the user starting to speak cancels it
+   */
+  const raw = voice as unknown as {
+    client?: { emit: (...args: unknown[]) => boolean };
+    sendEvent?: (type: string, data: unknown) => void;
+  };
+  // `session.voice === voice` guards: after a recovery swaps the connection,
+  // a stale instance must not arm the new session's watchdog.
+  if (raw.client) {
+    const origEmit = raw.client.emit.bind(raw.client);
+    raw.client.emit = (...args: unknown[]) => {
+      if (session.voice === voice) {
+        const type = args[0] as string;
+        if (type === "response.created" || type === "input_audio_buffer.committed") {
+          armWatchdog(session, ws);
+        } else if (type === "response.done" || type === "input_audio_buffer.speech_started") {
+          disarmWatchdog(session);
+        } else if (session.watchdog) {
+          armWatchdog(session, ws); // heartbeat — activity while owed resets the clock
+        }
+      }
+      return origEmit(...args);
+    };
+  }
+  if (raw.sendEvent) {
+    const origSend = raw.sendEvent.bind(voice);
+    raw.sendEvent = (type: string, data: unknown) => {
+      if (type === "response.create" && session.voice === voice) armWatchdog(session, ws);
+      origSend(type, data);
+    };
+  }
+
   // Wire voice events → WS. Listeners type-check loosely because
   // MastraVoice's VoiceEventMap declares some fields narrower than the
   // Inworld runtime payloads (audio:Buffer vs string).
@@ -164,7 +204,6 @@ async function connectVoice(
 
   on("speaking", (payload: unknown) => {
     const { audio, response_id } = payload as { audio: Buffer | Uint8Array; response_id?: string };
-    disarmWatchdog(session); // assistant is responding
     // Skip chunks for responses we already cancelled. Inworld typically stops
     // emitting them on its own once `interrupt_response` fires, but the server
     // can have a tail in flight, and dropping them here means the client never
@@ -193,12 +232,6 @@ async function connectVoice(
       role: "user" | "assistant";
       response_id?: string;
     };
-    if (role === "assistant") {
-      disarmWatchdog(session);
-    } else if (text === "\n") {
-      // Finalized user transcript = turn over, a response is now owed.
-      armWatchdog(session, ws);
-    }
     sendJSON(ws, { type: "transcript", role, text, responseId: response_id });
   });
 
@@ -208,9 +241,6 @@ async function connectVoice(
       args?: unknown;
       result?: unknown;
     };
-    // The SDK just sent the function output + response.create — a follow-up
-    // response is owed.
-    armWatchdog(session, ws);
     sendJSON(ws, { type: "tool", toolName, args, result });
     sendJSON(ws, { type: "state", state: session.siteState.get() });
   });
@@ -218,14 +248,12 @@ async function connectVoice(
   on("interrupted", (payload: unknown) => {
     const { response_id } = payload as { response_id?: string };
     if (response_id) cancelled.add(response_id);
-    disarmWatchdog(session); // user took the turn back — nothing owed
     // `interrupt_response: true` already cancels the response server-side from
     // VAD; the `cancelled` set above drops any tail chunks still in flight.
     sendJSON(ws, { type: "interrupted", responseId: response_id });
   });
 
   on("response.done", () => {
-    disarmWatchdog(session);
     sendJSON(ws, { type: "state", state: session.siteState.get() });
   });
 
@@ -346,10 +374,21 @@ app.get(
       try {
         const msg = JSON.parse(typeof data === "string" ? data : data.toString());
         if (msg && typeof msg === "object" && msg.type === "hello") return;
-        // TEST_HOOKS=1 only: sever the upstream socket the way an
-        // Inworld-side drop would, to exercise the recovery path.
-        if (msg?.type === "__kill_upstream" && process.env.TEST_HOOKS === "1") {
+        // TEST_HOOKS=1 only: exercise the two real failure modes.
+        // __kill_upstream severs the socket like an Inworld-side drop;
+        // __wedge_upstream goes deaf (socket open, no events) with a
+        // response owed — the silent-wedge case the watchdog exists for.
+        if (process.env.TEST_HOOKS === "1" && msg?.type === "__kill_upstream") {
           (session.voice as unknown as { ws?: { terminate?: () => void } })?.ws?.terminate?.();
+          return;
+        }
+        if (process.env.TEST_HOOKS === "1" && msg?.type === "__wedge_upstream") {
+          const v = session.voice as unknown as {
+            ws?: { removeAllListeners?: (ev: string) => void };
+            sendEvent?: (t: string, d: unknown) => void;
+          };
+          v?.ws?.removeAllListeners?.("message");
+          v?.sendEvent?.("response.create", {});
           return;
         }
       } catch {
