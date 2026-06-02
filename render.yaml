@@ -1,12 +1,28 @@
+# Render Blueprint — deploys the whole demo as ONE web service:
+#   /        public landing page + voice WebSocket
+#   /admin   Mastra Studio, basic-auth gated (set ADMIN_USERNAME/ADMIN_PASSWORD)
+#
+# Deploy: push to GitHub → Render dashboard → New → Blueprint → pick the repo.
+# You'll be prompted for the three secret env vars on first deploy.
 services:
   - type: web
     name: mastra-design-agent
     runtime: node
-    plan: starter
+    plan: starter # free works too, but spins down when idle (slow first hit)
     buildCommand: npm install && npm run build
-    startCommand: node .mastra/output/index.mjs
+    startCommand: npm start
+    healthCheckPath: /api/state
     envVars:
-      - key: OPENAI_API_KEY
-        sync: false
       - key: NODE_VERSION
-        value: "20"
+        value: 22.14.0
+      - key: INWORLD_API_KEY
+        sync: false # Base64 "runtime key" from platform.inworld.ai — paste verbatim
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      # Optional overrides:
+      # - key: INWORLD_REALTIME_MODEL
+      #   value: anthropic/claude-sonnet-4-6
+      # - key: INWORLD_SPEAKER
+      #   value: Sarah

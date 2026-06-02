@@ -2,7 +2,9 @@
   "name": "mastra-design-agent",
   "version": "0.1.0",
   "private": true,
-  "description": "Mastra agent that redesigns a live landing page via Inworld-routed LLM tool calls.",
+  "description": "Voice agent that redesigns a live landing page — Mastra + Inworld realtime voice, with auth-gated Mastra Studio.",
+  "license": "MIT",
+  "repository": "github:cshape/mastra-inworld-design-agent",
   "type": "module",
   "scripts": {
     "dev": "tsx watch --env-file=.env src/index.ts",
