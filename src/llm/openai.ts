@@ -1,11 +1,13 @@
 import { createOpenAI } from "@ai-sdk/openai";
 
-/**
- * OpenAI provider for text/reasoning (non-voice) interactions.
- * For voice interactions, the OpenAIRealtimeVoice provider handles everything.
- */
+const INWORLD_KEY = process.env.INWORLD_API_KEY ?? "";
+
 export const openai = createOpenAI({
-  apiKey: process.env.OPENAI_API_KEY ?? "",
+  baseURL: "https://api.inworld.ai/v1",
+  apiKey: INWORLD_KEY,
+  headers: {
+    Authorization: `Basic ${INWORLD_KEY}`,
+  },
 });
 
-export const DEFAULT_OPENAI_MODEL = "gpt-4o";
+export const DEFAULT_OPENAI_MODEL = "openai/gpt-4.1";

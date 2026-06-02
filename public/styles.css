@@ -38,7 +38,8 @@ body {
   background: var(--site-bg, #ffffff);
   color: var(--site-text, #000000);
   min-height: 100%;
-  padding: 96px clamp(20px, 6vw, 96px) 64px;
+  /* Bottom padding reserves room for the fixed CTA so content never hides. */
+  padding: 96px clamp(20px, 6vw, 96px) calc(160px + env(safe-area-inset-bottom, 0px));
   font-size: calc(16px * var(--site-scale, 1));
   line-height: 1.45;
 }
@@ -86,12 +87,20 @@ body {
   font-size: 1.1em;
 }
 
-/* CTA: big, centered, sits below all content. Acts as the voice trigger.
-   Uses site-accent so the user's redesign repaints it. */
+/* CTA: pinned to viewport bottom so it's always reachable. Uses site-accent
+   so the user's redesign repaints it. The wrap is fixed; the preview frame
+   reserves matching bottom padding so content can't slide underneath. */
 .site-cta-wrap {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 8;
   display: flex;
   justify-content: center;
-  margin: 48px 0 24px;
+  padding: 16px clamp(16px, 4vw, 32px) calc(16px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, var(--site-bg, #ffffff) 60%, transparent);
+  pointer-events: none;
 }
 
 .site-cta {
@@ -100,11 +109,13 @@ body {
   align-items: center;
   gap: 14px;
   color: var(--site-accent, #0000ee);
-  background: transparent;
+  background: var(--site-bg, #ffffff);
   border: 2px solid currentColor;
   padding: 16px 36px;
   cursor: pointer;
   text-align: center;
+  pointer-events: auto;
+  max-width: 100%;
 }
 
 .site-cta__label {
@@ -165,11 +176,25 @@ body {
 }
 
 .site-tools__list {
+  list-style: disc;
   margin: 0;
   padding-left: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 32px;
+  row-gap: 4px;
+}
+
+@media (max-width: 880px) {
+  .site-tools__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .site-tools__list {
+    grid-template-columns: 1fr;
+  }
 }
 
 .site-tool {
@@ -177,6 +202,7 @@ body {
   padding: 2px 6px;
   border-radius: 3px;
   margin-left: -6px;
+  min-width: 0;
 }
 
 .site-tool__name {
@@ -340,8 +366,19 @@ body {
 }
 
 @media (max-width: 720px) {
-  .stage {
-    padding: 12px;
+  .preview__frame {
+    padding: 80px clamp(16px, 4vw, 32px) calc(140px + env(safe-area-inset-bottom, 0px));
+  }
+  .site-hero[data-variant="split"] {
+    grid-template-columns: 1fr;
+  }
+  .site-cta {
+    width: 100%;
+    justify-content: center;
+    padding: 14px 20px;
+  }
+  .site-cta__main {
+    font-size: calc(1.2em * var(--site-scale, 1));
   }
   .debug-toggle {
     bottom: 14px;
@@ -351,5 +388,6 @@ body {
     left: 12px;
     right: 12px;
     width: auto;
+    bottom: 80px;
   }
 }

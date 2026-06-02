@@ -30,7 +30,7 @@ export type SiteState = {
   marquee: string;
 };
 
-const defaults: SiteState = {
+export const defaults: SiteState = {
   theme: {
     bg: "#ffffff",
     text: "#000000",
@@ -72,71 +72,6 @@ const defaults: SiteState = {
   marquee: "Powered by Inworld AI (#1 Ranked TTS) and Mastra (Best Typescript Agent Framework)",
 };
 
-const state: SiteState = structuredClone(defaults);
-
-export function getState(): SiteState {
-  return state;
-}
-
-export function setTheme(patch: Partial<ThemeTokens>): SiteState {
-  Object.assign(state.theme, patch);
-  return state;
-}
-
-export function setTypography(patch: Partial<TypographyTokens>): SiteState {
-  Object.assign(state.typography, patch);
-  return state;
-}
-
-export function setLayout(patch: Partial<LayoutTokens>): SiteState {
-  Object.assign(state.layout, patch);
-  return state;
-}
-
-export function setCopy(slot: CopySlot, text: string): SiteState {
-  state.copy[slot] = text;
-  return state;
-}
-
-export function resetState(): SiteState {
-  const fresh = structuredClone(defaults);
-  state.theme = fresh.theme;
-  state.typography = fresh.typography;
-  state.layout = fresh.layout;
-  state.copy = fresh.copy;
-  state.features = fresh.features;
-  state.marquee = fresh.marquee;
-  return state;
-}
-
-export function setMarquee(text: string): SiteState {
-  state.marquee = text;
-  return state;
-}
-
-export function addFeature(card: FeatureCard, index?: number): SiteState {
-  if (typeof index === "number" && index >= 0 && index <= state.features.length) {
-    state.features.splice(index, 0, card);
-  } else {
-    state.features.push(card);
-  }
-  return state;
-}
-
-export function removeFeature(index: number): SiteState {
-  if (index >= 0 && index < state.features.length) {
-    state.features.splice(index, 1);
-  }
-  return state;
-}
-
-export function updateFeature(index: number, patch: Partial<FeatureCard>): SiteState {
-  if (index >= 0 && index < state.features.length) {
-    Object.assign(state.features[index], patch);
-  }
-  return state;
-}
-
 export type PresetName =
   | "default"
   | "dark"
@@ -147,7 +82,10 @@ export type PresetName =
   | "forest"
   | "neon";
 
-export const presets: Record<PresetName, { theme: ThemeTokens; typography?: Partial<TypographyTokens> }> = {
+export const presets: Record<
+  PresetName,
+  { theme: ThemeTokens; typography?: Partial<TypographyTokens> }
+> = {
   default: { theme: { bg: "#ffffff", text: "#0b0b0f", accent: "#5b6cff" } },
   dark: { theme: { bg: "#0b0b0f", text: "#f5f5f8", accent: "#7c8bff" } },
   cream: {
@@ -167,10 +105,85 @@ export const presets: Record<PresetName, { theme: ThemeTokens; typography?: Part
   },
 };
 
-export function applyPreset(name: PresetName): SiteState {
-  const preset = presets[name];
-  if (!preset) return state;
-  state.theme = { ...preset.theme };
-  if (preset.typography) Object.assign(state.typography, preset.typography);
-  return state;
+/**
+ * One isolated copy of the site state, with setters bound to it. Each
+ * WebSocket session creates its own instance — no cross-talk between users.
+ */
+export type SiteStateStore = ReturnType<typeof createSiteState>;
+
+export function createSiteState() {
+  const state: SiteState = structuredClone(defaults);
+
+  return {
+    get(): SiteState {
+      return state;
+    },
+
+    setTheme(patch: Partial<ThemeTokens>): SiteState {
+      Object.assign(state.theme, patch);
+      return state;
+    },
+
+    setTypography(patch: Partial<TypographyTokens>): SiteState {
+      Object.assign(state.typography, patch);
+      return state;
+    },
+
+    setLayout(patch: Partial<LayoutTokens>): SiteState {
+      Object.assign(state.layout, patch);
+      return state;
+    },
+
+    setCopy(slot: CopySlot, text: string): SiteState {
+      state.copy[slot] = text;
+      return state;
+    },
+
+    setMarquee(text: string): SiteState {
+      state.marquee = text;
+      return state;
+    },
+
+    addFeature(card: FeatureCard, index?: number): SiteState {
+      if (typeof index === "number" && index >= 0 && index <= state.features.length) {
+        state.features.splice(index, 0, card);
+      } else {
+        state.features.push(card);
+      }
+      return state;
+    },
+
+    removeFeature(index: number): SiteState {
+      if (index >= 0 && index < state.features.length) {
+        state.features.splice(index, 1);
+      }
+      return state;
+    },
+
+    updateFeature(index: number, patch: Partial<FeatureCard>): SiteState {
+      if (index >= 0 && index < state.features.length) {
+        Object.assign(state.features[index], patch);
+      }
+      return state;
+    },
+
+    applyPreset(name: PresetName): SiteState {
+      const preset = presets[name];
+      if (!preset) return state;
+      state.theme = { ...preset.theme };
+      if (preset.typography) Object.assign(state.typography, preset.typography);
+      return state;
+    },
+
+    reset(): SiteState {
+      const fresh = structuredClone(defaults);
+      state.theme = fresh.theme;
+      state.typography = fresh.typography;
+      state.layout = fresh.layout;
+      state.copy = fresh.copy;
+      state.features = fresh.features;
+      state.marquee = fresh.marquee;
+      return state;
+    },
+  };
 }

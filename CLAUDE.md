@@ -4,13 +4,13 @@ Context for AI coding agents working in this project.
 
 ## What this is
 
-A Mastra agent that redesigns a landing page via tool calls. Uses OpenAI GPT-4o for text and OpenAI Realtime for voice. Tools mutate shared state, frontend re-renders on updates.
+A Mastra agent that redesigns a landing page via tool calls. Uses Inworld Realtime for voice; the agent's text-path model is routed through Inworld's OpenAI-compatible router. Tools mutate shared state, frontend re-renders on updates.
 
 ## Development
 
 ```bash
 npm install
-cp .env.example .env  # set OPENAI_API_KEY
+cp .env.example .env  # set INWORLD_API_KEY
 npm run dev          # localhost:4111
 ```
 
@@ -23,11 +23,11 @@ src/
 │   ├── tools/              # 5 tool definitions 
 │   └── state/site-state.ts # Shared state management
 ├── server/
-│   ├── routes.ts           # /api/state, /api/chat
+│   ├── routes.ts           # /api/state
 │   ├── static.ts           # Serves public/
-│   └── voice.ts            # OpenAI Realtime integration
+│   └── voice.ts            # Inworld Realtime integration
 └── llm/
-    ├── openai.ts           # GPT-4o provider
+    ├── openai.ts           # Text-model provider (pointed at Inworld router)
     └── voice.ts            # Realtime provider factory
 ```
 
@@ -38,7 +38,7 @@ src/
 - **Paths**: Use `import.meta.url` not `process.cwd()` for file resolution
 - **API routes**: Use middleware not `registerApiRoute` for `/api/*`
 - **Static serving**: Registered on `/` and `/*` to handle root requests
-- **Environment**: `OPENAI_API_KEY` required for both text and voice
+- **Environment**: `INWORLD_API_KEY` required for both the realtime voice session and the text-path model (routed through Inworld)
 
 ## Testing
 

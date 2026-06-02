@@ -1,5 +1,6 @@
 const $log = document.getElementById("log");
 const $frame = document.getElementById("preview-frame");
+const $marqueeHost = document.getElementById("marquee-host");
 const $debugToggle = document.getElementById("debug-toggle");
 const $debugDrawer = document.getElementById("debug-drawer");
 const $debugClear = document.getElementById("debug-clear");
@@ -7,6 +8,7 @@ const $debugClear = document.getElementById("debug-clear");
 let loadedFonts = new Set();
 let voiceStatus = "off"; // "off" | "connecting" | "on"
 let lastCtaLabel = "";
+let lastMarqueeText = null;
 
 const TOOLS = [
   { id: "set_theme", label: "set_theme", desc: "change bg, text, or accent colors" },
@@ -60,10 +62,11 @@ function render(state) {
   const { theme, typography, layout, copy, features, marquee } = state;
   ensureFont(typography.fontFamily);
 
-  $frame.style.setProperty("--site-bg", theme.bg);
-  $frame.style.setProperty("--site-text", theme.text);
-  $frame.style.setProperty("--site-accent", theme.accent);
-  $frame.style.setProperty("--site-scale", String(typography.scale));
+  const root = document.documentElement.style;
+  root.setProperty("--site-bg", theme.bg);
+  root.setProperty("--site-text", theme.text);
+  root.setProperty("--site-accent", theme.accent);
+  root.setProperty("--site-scale", String(typography.scale));
   $frame.style.fontFamily = `'${typography.fontFamily}', system-ui, sans-serif`;
 
   lastCtaLabel = copy.cta;
@@ -78,9 +81,7 @@ function render(state) {
     )
     .join("");
 
-  const marqueeHtml = marquee
-    ? `<marquee class="site-marquee" behavior="scroll" direction="left" scrollamount="6">${escape(marquee)}</marquee>`
-    : "";
+  renderMarquee(marquee);
 
   $frame.innerHTML = `
     <section class="site-hero" data-alignment="${escape(layout.alignment)}" data-variant="${escape(layout.heroVariant)}">
@@ -107,10 +108,18 @@ function render(state) {
         <span class="site-cta__label">${renderCtaLabel(copy.cta)}</span>
       </button>
     </div>
-    ${marqueeHtml}
   `;
 
   applyVoiceStatusToCta();
+}
+
+function renderMarquee(text) {
+  const next = text || "";
+  if (next === lastMarqueeText) return;
+  lastMarqueeText = next;
+  $marqueeHost.innerHTML = next
+    ? `<marquee class="site-marquee" behavior="scroll" direction="left" scrollamount="6">${escape(next)}</marquee>`
+    : "";
 }
 
 function highlightTool(name) {
@@ -169,7 +178,7 @@ $debugClear.addEventListener("click", () => {
   $log.innerHTML = "";
 });
 
-/* ---------- Voice (OpenAI Realtime via SSE + chunked POSTs) ---------- */
+/* ---------- Voice (Inworld Realtime via SSE + chunked POSTs) ---------- */
 
 const SAMPLE_RATE = 24_000;
 const MIC_FLUSH_MS = 80;
@@ -189,8 +198,7 @@ registerProcessor('recorder', RecorderWorklet);
 
 const voice = {
   active: false,
-  sessionId: null,
-  evt: null,
+  ws: null,
   stream: null,
   ctxIn: null,
   ctxOut: null,
@@ -201,6 +209,12 @@ const voice = {
   outCursor: 0,
   activeAudio: new Set(),
   bubbles: { user: null, assistant: null },
+  /** Response id stamped on the most recent `audio.header`. The next binary
+   *  frame is assumed to belong to this response. */
+  pendingResponseId: null,
+  /** Response ids the server told us were cancelled. Audio chunks tagged with
+   *  these ids are dropped instead of scheduled. Cleared on speaking.done. */
+  cancelledResponseIds: new Set(),
 };
 
 function floatToPCM16(f32) {
@@ -272,9 +286,10 @@ function scheduleFlush() {
   voice.flushTimer = setTimeout(flushMic, MIC_FLUSH_MS);
 }
 
-async function flushMic() {
+function flushMic() {
   voice.flushTimer = null;
-  if (!voice.active || !voice.sessionId || voice.pending.length === 0) return;
+  if (!voice.active || !voice.ws || voice.ws.readyState !== WebSocket.OPEN) return;
+  if (voice.pending.length === 0) return;
   let total = 0;
   for (const c of voice.pending) total += c.length;
   const merged = new Int16Array(total);
@@ -285,13 +300,9 @@ async function flushMic() {
   }
   voice.pending.length = 0;
   try {
-    await fetch(`/api/voice/append?sid=${encodeURIComponent(voice.sessionId)}`, {
-      method: "POST",
-      headers: { "content-type": "application/octet-stream" },
-      body: merged.buffer,
-    });
+    voice.ws.send(merged.buffer);
   } catch (err) {
-    console.warn("voice append failed", err);
+    console.warn("ws send failed", err);
   }
 }
 
@@ -301,18 +312,76 @@ function onMicChunk(f32) {
   scheduleFlush();
 }
 
+function playBinaryAudio(buf) {
+  // Drop audio belonging to a response we already cancelled (barge-in tail).
+  if (voice.pendingResponseId && voice.cancelledResponseIds.has(voice.pendingResponseId)) return;
+  playPcmChunk(new Int16Array(buf));
+}
+
+function handleVoiceMessage(data) {
+  // Binary frames are TTS audio chunks. The preceding `audio.header` JSON set
+  // pendingResponseId; we use it to gate cancelled-response chunks.
+  if (data instanceof ArrayBuffer) {
+    playBinaryAudio(data);
+    return;
+  }
+  if (data instanceof Blob) {
+    data.arrayBuffer().then(playBinaryAudio);
+    return;
+  }
+  let msg;
+  try {
+    msg = JSON.parse(data);
+  } catch {
+    return;
+  }
+  switch (msg.type) {
+    case "ready":
+      setVoiceUI("on");
+      appendMessage("system", "voice on — say what to change.");
+      break;
+    case "transcript":
+      appendTranscript(msg.role, msg.text);
+      break;
+    case "state":
+      try { render(msg.state); } catch {}
+      break;
+    case "tool": {
+      const name = msg.toolName || "tool";
+      appendMessage("system", `tool: ${name}(${JSON.stringify(msg.args || {})})`);
+      highlightTool(name);
+      break;
+    }
+    case "interrupted":
+      // Mark the response as cancelled BEFORE wiping the queue, so any
+      // in-flight binary frames that arrive in the next few ms get dropped
+      // instead of scheduled on top of fresh audio.
+      if (msg.responseId) voice.cancelledResponseIds.add(msg.responseId);
+      stopAllAudio();
+      voice.bubbles.assistant = null;
+      break;
+    case "speaking.done":
+      // End of one TTS response. Forget the cancellation flag — the id is
+      // done and reusing the same id by Inworld is unlikely but harmless to
+      // clear.
+      if (msg.responseId) voice.cancelledResponseIds.delete(msg.responseId);
+      break;
+    case "audio.header":
+      voice.pendingResponseId = msg.responseId || null;
+      break;
+    case "error":
+      appendMessage("system", `voice error: ${msg.message ?? "unknown"}`);
+      break;
+    default:
+      // Unknown control message — ignore for forward compatibility.
+      break;
+  }
+}
+
 async function startVoice() {
   if (voice.active) return;
   setVoiceUI("connecting");
   try {
-    const startRes = await fetch("/api/voice/start", { method: "POST" });
-    if (!startRes.ok) {
-      const msg = await startRes.text();
-      throw new Error(`start failed (${startRes.status}): ${msg}`);
-    }
-    const { sessionId } = await startRes.json();
-    voice.sessionId = sessionId;
-
     voice.stream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
     });
@@ -330,68 +399,38 @@ async function startVoice() {
     voice.worklet.port.onmessage = (e) => onMicChunk(e.data);
     voice.source.connect(voice.worklet);
 
-    voice.evt = new EventSource(
-      `/api/voice/events?sid=${encodeURIComponent(sessionId)}`,
-    );
-    voice.evt.addEventListener("audio", (e) => {
-      const { b64 } = JSON.parse(e.data);
-      playPcmChunk(decodeAudio(b64));
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${proto}//${location.host}/api/voice`);
+    ws.binaryType = "arraybuffer";
+    voice.ws = ws;
+    voice.active = true; // mic chunks queue immediately; flushMic gates on ws state
+
+    ws.addEventListener("open", () => {
+      ws.send(JSON.stringify({ type: "hello" }));
     });
-    voice.evt.addEventListener("transcript", (e) => {
-      const { text, role } = JSON.parse(e.data);
-      appendTranscript(role, text);
-    });
-    voice.evt.addEventListener("state", (e) => {
-      try { render(JSON.parse(e.data)); } catch {}
-    });
-    voice.evt.addEventListener("tool", (e) => {
-      try {
-        const payload = JSON.parse(e.data);
-        const name = payload.toolName || payload.tool || "tool";
-        appendMessage("system", `tool: ${name}(${JSON.stringify(payload.args || {})})`);
-        highlightTool(name);
-      } catch {}
-    });
-    voice.evt.addEventListener("turn.done", () => {
-      voice.bubbles.user = null;
-      voice.bubbles.assistant = null;
-    });
-    voice.evt.addEventListener("error", (e) => {
-      try {
-        const { message } = JSON.parse(e.data);
-        appendMessage("system", `voice error: ${message}`);
-      } catch {
-        appendMessage("system", "voice error");
-      }
-    });
-    voice.evt.addEventListener("closed", () => {
+    ws.addEventListener("message", (e) => handleVoiceMessage(e.data));
+    ws.addEventListener("close", () => {
+      if (voice.active) appendMessage("system", "voice stream disconnected");
       stopVoice(false);
     });
-    voice.evt.onerror = () => {
-      if (voice.evt && voice.evt.readyState === EventSource.CLOSED) {
-        appendMessage("system", "voice stream disconnected");
-        stopVoice(false);
-      }
-    };
-
-    setVoiceUI("on");
-    appendMessage("system", "voice on — say what to change.");
+    ws.addEventListener("error", () => {
+      appendMessage("system", "voice connection error");
+    });
   } catch (err) {
     appendMessage("system", `voice start failed: ${err?.message ?? err}`);
-    await stopVoice(true);
+    await stopVoice(false);
   }
 }
 
-async function stopVoice(notifyServer = true) {
-  const sid = voice.sessionId;
+async function stopVoice(closeSocket = true) {
   if (voice.flushTimer) {
     clearTimeout(voice.flushTimer);
     voice.flushTimer = null;
   }
-  if (voice.evt) {
-    voice.evt.close();
-    voice.evt = null;
+  if (closeSocket && voice.ws) {
+    try { voice.ws.close(1000, "client stop"); } catch {}
   }
+  voice.ws = null;
   if (voice.worklet) {
     try { voice.worklet.port.onmessage = null; voice.worklet.disconnect(); } catch {}
     voice.worklet = null;
@@ -410,13 +449,8 @@ async function stopVoice(notifyServer = true) {
   voice.pending.length = 0;
   voice.bubbles.user = null;
   voice.bubbles.assistant = null;
-  voice.sessionId = null;
+  voice.active = false;
   setVoiceUI("off");
-  if (notifyServer && sid) {
-    try {
-      await fetch(`/api/voice/stop?sid=${encodeURIComponent(sid)}`, { method: "POST" });
-    } catch {}
-  }
 }
 
 // CTA button is inside the preview frame and re-rendered on each state

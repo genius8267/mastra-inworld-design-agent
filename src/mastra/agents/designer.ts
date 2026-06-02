@@ -1,16 +1,17 @@
 import { Agent } from "@mastra/core/agent";
 import { DEFAULT_OPENAI_MODEL, openai } from "../../llm/openai";
 import { createVoice } from "../../llm/voice";
-import { setCopyTool } from "../tools/set-copy";
-import { setLayoutTool } from "../tools/set-layout";
-import { setThemeTool } from "../tools/set-theme";
-import { setTypographyTool } from "../tools/set-typography";
-import { resetTool } from "../tools/reset";
-import { addFeatureTool } from "../tools/add-feature";
-import { removeFeatureTool } from "../tools/remove-feature";
-import { updateFeatureTool } from "../tools/update-feature";
-import { applyPresetTool } from "../tools/apply-preset";
-import { setMarqueeTool } from "../tools/set-marquee";
+import type { SiteStateStore } from "../state/site-state";
+import { makeSetCopyTool } from "../tools/set-copy";
+import { makeSetLayoutTool } from "../tools/set-layout";
+import { makeSetThemeTool } from "../tools/set-theme";
+import { makeSetTypographyTool } from "../tools/set-typography";
+import { makeResetTool } from "../tools/reset";
+import { makeAddFeatureTool } from "../tools/add-feature";
+import { makeRemoveFeatureTool } from "../tools/remove-feature";
+import { makeUpdateFeatureTool } from "../tools/update-feature";
+import { makeApplyPresetTool } from "../tools/apply-preset";
+import { makeSetMarqueeTool } from "../tools/set-marquee";
 
 const instructions = `You are a design agent that redesigns a live landing page by calling tools. The user is talking to you with VOICE — keep responses short and conversational.
 
@@ -32,23 +33,36 @@ Rules:
 - If a request is genuinely impossible with these tools (e.g. "add an image carousel"), say so plainly in one sentence.
 - Feature cards are indexed 0, 1, 2... When the user says "the second card", that's index 1.`;
 
-const voice = createVoice();
+/**
+ * Build a fresh designer agent for one voice session. Each session owns:
+ *   - its own `SiteStateStore` (no cross-user visual bleed)
+ *   - its own `InworldRealtimeVoice` connection
+ *   - tools that close over THIS session's state
+ *
+ * Site state is NOT a global anywhere — only this agent's tools can mutate
+ * the store passed in.
+ */
+export function createDesigner(siteState: SiteStateStore) {
+  const voice = createVoice();
+  return new Agent({
+    id: "designer",
+    name: "designer",
+    instructions,
+    model: openai(DEFAULT_OPENAI_MODEL),
+    tools: {
+      set_theme: makeSetThemeTool(siteState),
+      set_typography: makeSetTypographyTool(siteState),
+      set_copy: makeSetCopyTool(siteState),
+      set_layout: makeSetLayoutTool(siteState),
+      add_feature: makeAddFeatureTool(siteState),
+      remove_feature: makeRemoveFeatureTool(siteState),
+      update_feature: makeUpdateFeatureTool(siteState),
+      apply_preset: makeApplyPresetTool(siteState),
+      set_marquee: makeSetMarqueeTool(siteState),
+      reset: makeResetTool(siteState),
+    },
+    ...(voice ? { voice } : {}),
+  });
+}
 
-export const designer = new Agent({
-  name: "designer",
-  instructions,
-  model: openai(DEFAULT_OPENAI_MODEL),
-  tools: {
-    set_theme: setThemeTool,
-    set_typography: setTypographyTool,
-    set_copy: setCopyTool,
-    set_layout: setLayoutTool,
-    add_feature: addFeatureTool,
-    remove_feature: removeFeatureTool,
-    update_feature: updateFeatureTool,
-    apply_preset: applyPresetTool,
-    set_marquee: setMarqueeTool,
-    reset: resetTool,
-  },
-  ...(voice ? { voice } : {}),
-});
+export type DesignerAgent = ReturnType<typeof createDesigner>;
