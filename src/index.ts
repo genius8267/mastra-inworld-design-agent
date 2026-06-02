@@ -163,6 +163,19 @@ async function attachAgent(ws: WSContext): Promise<VoiceSession | null> {
     return null;
   }
 
+  // The SDK only watches its upstream socket during the connect handshake —
+  // if Inworld drops the connection mid-session, no event fires and the
+  // session silently stops responding. Watch the raw socket ourselves and
+  // close the browser WS so the UI shows the disconnect instead of hanging.
+  let teardown = false;
+  const upstream = (voice as unknown as { ws?: { once: (ev: string, cb: (...a: never[]) => void) => void } }).ws;
+  upstream?.once("close", ((code: number, reason: Buffer) => {
+    if (teardown) return; // we closed it — normal cleanup
+    console.warn(`inworld upstream closed mid-session: ${code} ${reason?.toString() || "(no reason)"}`);
+    sendJSON(ws, { type: "error", message: "voice session lost — tap to restart" });
+    ws.close(1011, "upstream closed");
+  }) as never);
+
   // Send initial state + ready signal, then a fire-and-forget greeting. The
   // greeting's audio drains via the `speaking` listener.
   //
@@ -192,6 +205,7 @@ async function attachAgent(ws: WSContext): Promise<VoiceSession | null> {
   });
 
   const cleanup = async () => {
+    teardown = true; // our own close — don't report it as an upstream drop
     try {
       voice.close();
     } catch {
