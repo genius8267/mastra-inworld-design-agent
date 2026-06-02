@@ -24,7 +24,11 @@ npm run dev            # http://localhost:4111
 
 ## Mastra Studio at /admin
 
-Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` in `.env` and the same server exposes [Mastra Studio](https://mastra.ai/docs/studio/overview) at `/admin`, behind basic auth — inspect the designer agent, chat with it, and experiment with instructions without touching the public page. Leave the vars unset and `/admin` is disabled.
+Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` in `.env` and the same server exposes [Mastra Studio](https://mastra.ai/docs/studio/overview) at `/admin`, behind basic auth. Leave the vars unset and `/admin` is disabled.
+
+**Studio edits go live.** The project wires up [Mastra's editor](https://mastra.ai/docs/editor/overview) with a shared SQLite database: edit the designer's instructions in Studio (Agents → designer → Editor), save — that's a draft you can test in the playground — then **Activate** the version, and the next public voice session speaks the new prompt. No redeploy, full version history and rollback. Set `PUBLIC_AGENT_STATUS=draft` if you'd rather have every save go live immediately.
+
+Code-owned fields (model, tool implementations) can't be changed from Studio — instructions are the live-tunable surface.
 
 ## Deploy to Render
 
@@ -72,6 +76,9 @@ The included [`render.yaml`](render.yaml) deploys everything as **one web servic
 | `STUDIO_PORT` | no | Internal Studio port (default 4112, loopback only) |
 | `INWORLD_REALTIME_MODEL` | no | Realtime LLM (default `anthropic/claude-sonnet-4-6`) |
 | `INWORLD_SPEAKER` | no | TTS voice (default `Sarah`) |
+| `INWORLD_TEXT_MODEL` | no | Studio text-chat model via Inworld's router (default `openai/gpt-4.1`) |
+| `DATABASE_URL` | no | Shared Studio-edits DB (default `file:./data/mastra.db`) |
+| `PUBLIC_AGENT_STATUS` | no | `published` (default: edits go live on Activate) or `draft` (live on save) |
 
 ## File map
 

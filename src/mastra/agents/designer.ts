@@ -49,13 +49,16 @@ Rules:
  *
  * Site state is NOT a global anywhere — only this agent's tools can mutate
  * the store passed in.
+ *
+ * `instructionsOverride` carries the published Studio edit (see
+ * resolve-instructions.ts); the code-defined prompt above is the baseline.
  */
-export function createDesigner(siteState: SiteStateStore) {
+export function createDesigner(siteState: SiteStateStore, instructionsOverride?: string) {
   const voice = createVoice();
   return new Agent({
     id: "designer",
     name: "designer",
-    instructions,
+    instructions: instructionsOverride ?? instructions,
     model: openai(DEFAULT_OPENAI_MODEL),
     tools: {
       set_theme: makeSetThemeTool(siteState),

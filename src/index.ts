@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { adminProxy, handleAdminUpgrade, startStudio } from "./admin";
 import { createDesigner, type DesignerAgent } from "./mastra/agents/designer";
+import { resolveDesignerInstructions } from "./mastra/resolve-instructions";
 import { createSiteState, defaults, type SiteStateStore } from "./mastra/state/site-state";
 
 const PORT = Number(process.env.PORT ?? 4111);
@@ -74,7 +75,10 @@ async function attachAgent(ws: WSContext): Promise<VoiceSession | null> {
   }
 
   const siteState = createSiteState();
-  const agent = createDesigner(siteState);
+  // Latest published Studio edit, if any — resolved per session so saves in
+  // /admin apply to the next visitor without a restart.
+  const instructionsOverride = await resolveDesignerInstructions();
+  const agent = createDesigner(siteState, instructionsOverride);
   const voice = await agent.getVoice();
   if (!voice) {
     sendJSON(ws, { type: "error", message: "voice provider unavailable" });

@@ -12,9 +12,17 @@ services:
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /api/state
+    # Persistent disk: Studio instruction edits (the stored-agents DB) survive
+    # deploys and restarts. Without it, /admin edits reset on every deploy.
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: 22.14.0
+      - key: DATABASE_URL
+        value: file:/var/data/mastra.db
       - key: INWORLD_API_KEY
         sync: false # Base64 "runtime key" from platform.inworld.ai — paste verbatim
       - key: ADMIN_USERNAME

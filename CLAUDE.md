@@ -27,6 +27,8 @@ src/
 │   └── voice.ts        # InworldRealtimeVoice factory
 └── mastra/
     ├── index.ts        # Mastra instance — ONLY for Studio (`mastra build --studio`)
+    ├── store.ts        # shared LibSQL storage (Studio edits DB, both processes)
+    ├── resolve-instructions.ts  # public-server reader for published Studio edits
     ├── agents/designer.ts
     ├── state/site-state.ts
     └── tools/          # 10 tool definitions
@@ -40,6 +42,8 @@ public/                 # vanilla JS frontend, no build step
 - **apiPrefix/studioBase are both /admin-rooted** (src/mastra/index.ts) so the proxy + auth cover Studio's UI and API with one path rule.
 - **Auth**: Authorization header OR signed session cookie. The cookie exists because browser WS handshakes can't carry basic-auth headers (Studio playground voice WS needs it).
 - **Upgrade dispatch**: @hono/node-ws kills upgrades it doesn't own; src/index.ts re-dispatches 'upgrade' events — /admin first, then node-ws listeners. Keep that ordering.
+- **Studio→live bridge**: both processes share a LibSQL file (store.ts). Studio saves instruction edits to mastra_agents/mastra_agent_versions; the public server resolves the published version per session (resolve-instructions.ts, clearCache before each read — the write happens in the other process). The designer's `editor` field stays OMITTED: that means code instructions are the baseline AND Studio can override; `editor: { instructions: true }` would forbid code instructions entirely.
+- **Text-path model**: llm/openai.ts must use `provider.chat(id)` — the bare provider call builds a Responses-API model (POST /v1/responses) which Inworld's router doesn't serve (404).
 
 ## Key points
 
