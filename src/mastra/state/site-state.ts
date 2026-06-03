@@ -16,6 +16,11 @@ export type LayoutTokens = {
 
 export type CopySlot = "headline" | "subheadline" | "cta" | "body";
 
+/** Baked-in styling treatment, independent of the color/font theme.
+ *  "garish" = borders + hard drop-shadows + WordArt headline (the 90s default);
+ *  "tasteful" = thin subtle borders, rounded corners, no hard shadows. */
+export type DecorMode = "garish" | "tasteful";
+
 export type FeatureCard = {
   title: string;
   body: string;
@@ -28,6 +33,7 @@ export type SiteState = {
   copy: Record<CopySlot, string>;
   features: FeatureCard[];
   marquee: string;
+  decor: DecorMode;
 };
 
 export const defaults: SiteState = {
@@ -70,6 +76,7 @@ export const defaults: SiteState = {
     },
   ],
   marquee: "Powered by Inworld AI (#1 Ranked TTS) and Mastra (Best Typescript Agent Framework)",
+  decor: "garish",
 };
 
 export type PresetName =
@@ -144,6 +151,11 @@ export function createSiteState() {
       return state;
     },
 
+    setDecor(mode: DecorMode): SiteState {
+      state.decor = mode;
+      return state;
+    },
+
     addFeature(card: FeatureCard, index?: number): SiteState {
       if (typeof index === "number" && index >= 0 && index <= state.features.length) {
         state.features.splice(index, 0, card);
@@ -183,6 +195,7 @@ export function createSiteState() {
       state.copy = fresh.copy;
       state.features = fresh.features;
       state.marquee = fresh.marquee;
+      state.decor = fresh.decor;
       return state;
     },
   };

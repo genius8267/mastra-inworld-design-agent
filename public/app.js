@@ -10,6 +10,13 @@ let voiceStatus = "off"; // "off" | "connecting" | "on"
 let lastCtaLabel = "";
 let lastMarqueeText = null;
 
+// Tool affordance. `used` = every tool the agent has called this session
+// (persistent highlight, so the user can see what's been touched); `pulse` =
+// the one that just fired (transient flash). Tracked in JS, not the DOM,
+// because render() rebuilds the tools list on every state update — it
+// re-applies these classes so the highlight survives. `reset` clears it.
+const toolUsage = { used: new Set(), pulse: null, pulseTimer: null };
+
 const TOOLS = [
   { id: "set_theme", label: "set_theme", desc: "change bg, text, or accent colors" },
   { id: "set_typography", label: "set_typography", desc: "swap Google Fonts or scale text" },
@@ -20,6 +27,7 @@ const TOOLS = [
   { id: "update_feature", label: "update_feature", desc: "edit an existing feature card" },
   { id: "apply_preset", label: "apply_preset", desc: "dark, cream, ocean, sunset, mono, forest, neon, default" },
   { id: "set_marquee", label: "set_marquee", desc: "change the top scrolling marquee text" },
+  { id: "set_decor", label: "set_decor", desc: "garish 90s or tasteful modern styling" },
   { id: "reset", label: "reset", desc: "restore everything to defaults" },
 ];
 
@@ -59,8 +67,11 @@ function ensureFont(family) {
 }
 
 function render(state) {
-  const { theme, typography, layout, copy, features, marquee } = state;
+  const { theme, typography, layout, copy, features, marquee, decor } = state;
   ensureFont(typography.fontFamily);
+
+  // Styling treatment ("garish" | "tasteful") — CSS keys off this on :root.
+  document.documentElement.dataset.decor = decor || "garish";
 
   const root = document.documentElement.style;
   root.setProperty("--site-bg", theme.bg);
@@ -97,8 +108,10 @@ function render(state) {
       <h3>Tools the agent can call</h3>
       <ul class="site-tools__list">
         ${TOOLS.map(
-          (t) =>
-            `<li class="site-tool" data-tool="${escape(t.id)}"><code class="site-tool__name">${escape(t.label)}</code> <span class="site-tool__desc">${escape(t.desc)}</span></li>`,
+          (t) => {
+            const cls = "site-tool" + (toolUsage.used.has(t.id) ? " is-used" : "");
+            return `<li class="${cls}" data-tool="${escape(t.id)}"><code class="site-tool__name">${escape(t.label)}</code> <span class="site-tool__desc">${escape(t.desc)}</span></li>`;
+          },
         ).join("")}
       </ul>
     </section>
@@ -109,6 +122,10 @@ function render(state) {
       </button>
     </div>
   `;
+
+  // render() just rebuilt the tools list, dropping the transient flash class.
+  // Re-apply it if a tool is mid-pulse so the flash survives state updates.
+  if (toolUsage.pulse) flashTool(toolUsage.pulse);
 
   applyVoiceStatusToCta();
 }
@@ -122,16 +139,30 @@ function renderMarquee(text) {
     : "";
 }
 
-function highlightTool(name) {
+// A tool fired: mark it used (persistent highlight) and trigger a one-shot
+// flash. `reset` wipes the slate rather than marking itself.
+function markToolUsed(name) {
   if (!name) return;
+  if (name === "reset") toolUsage.used.clear();
+  else toolUsage.used.add(name);
+  toolUsage.pulse = name;
+  clearTimeout(toolUsage.pulseTimer);
+  toolUsage.pulseTimer = setTimeout(() => {
+    toolUsage.pulse = null;
+    document
+      .querySelector(`.site-tool[data-tool="${CSS.escape(name)}"]`)
+      ?.classList.remove("is-active");
+  }, 900);
+  flashTool(name);
+}
+
+// Apply the transient flash class, restarting its animation via a reflow.
+function flashTool(name) {
   const li = document.querySelector(`.site-tool[data-tool="${CSS.escape(name)}"]`);
   if (!li) return;
   li.classList.remove("is-active");
-  // Restart the animation by forcing a reflow.
   void li.offsetWidth;
   li.classList.add("is-active");
-  clearTimeout(li._fadeTimer);
-  li._fadeTimer = setTimeout(() => li.classList.remove("is-active"), 1800);
 }
 
 function renderCtaLabel(text) {
@@ -349,7 +380,7 @@ function handleVoiceMessage(data) {
     case "tool": {
       const name = msg.toolName || "tool";
       appendMessage("system", `tool: ${name}(${JSON.stringify(msg.args || {})})`);
-      highlightTool(name);
+      markToolUsed(name);
       break;
     }
     case "interrupted":

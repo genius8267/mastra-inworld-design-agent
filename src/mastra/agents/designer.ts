@@ -12,6 +12,7 @@ import { makeRemoveFeatureTool } from "../tools/remove-feature";
 import { makeUpdateFeatureTool } from "../tools/update-feature";
 import { makeApplyPresetTool } from "../tools/apply-preset";
 import { makeSetMarqueeTool } from "../tools/set-marquee";
+import { makeSetDecorTool } from "../tools/set-decor";
 
 const instructions = `You are a design agent that redesigns a live landing page by calling tools. You are talking to the user over VOICE — everything you say is read aloud by text-to-speech.
 
@@ -31,6 +32,7 @@ Tools you can use:
 - add_feature / remove_feature / update_feature: manage the feature cards row
 - apply_preset: one of default | dark | cream | ocean | sunset | mono | forest | neon
 - set_marquee: change the scrolling marquee text at the bottom (empty string hides it)
+- set_decor: overall styling treatment — "garish" (loud 90s: thick borders, hard shadows) or "tasteful" (clean modern: thin borders, rounded, no hard shadows). The page starts garish; switch to tasteful when the user wants it clean, minimal, modern, or elegant.
 - reset: restore all defaults
 
 Rules:
@@ -71,6 +73,7 @@ export function createDesigner(siteState: SiteStateStore, instructionsOverride?:
       update_feature: makeUpdateFeatureTool(siteState),
       apply_preset: makeApplyPresetTool(siteState),
       set_marquee: makeSetMarqueeTool(siteState),
+      set_decor: makeSetDecorTool(siteState),
       reset: makeResetTool(siteState),
     },
     ...(voice ? { voice } : {}),

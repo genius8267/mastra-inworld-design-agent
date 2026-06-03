@@ -240,21 +240,42 @@ body {
   margin-left: 6px;
 }
 
+.site-tool__name {
+  transition: color 200ms ease;
+}
+
+/* Persistent "used" marker: once the agent calls a tool, its name takes the
+   accent highlight color and stays — so the user can see what's been touched
+   and what's left to try. */
+.site-tool.is-used .site-tool__name {
+  color: var(--site-accent, #0000ee);
+  font-weight: 700;
+}
+
+.site-tool.is-used .site-tool__desc {
+  opacity: 0.9;
+}
+
+/* Transient flash the instant a tool fires: invert the whole row, then it
+   settles (via the .site-tool transition) into the persistent used state.
+   Declared after .is-used so its text colors win during the flash. */
 .site-tool.is-active {
   background: var(--site-accent, #0000ee);
   color: var(--site-bg, #ffffff);
-  animation: tool-flash 1.8s ease-out;
+  animation: tool-flash 900ms ease-out;
 }
 
+.site-tool.is-active .site-tool__name,
 .site-tool.is-active .site-tool__desc {
+  color: var(--site-bg, #ffffff);
   opacity: 1;
 }
 
 @keyframes tool-flash {
-  0% { transform: translateX(0); }
-  10% { transform: translateX(4px); }
-  20% { transform: translateX(0); }
-  100% { transform: translateX(0); }
+  0% { transform: scale(1); }
+  18% { transform: scale(1.05); }
+  45% { transform: scale(1); }
+  100% { transform: scale(1); }
 }
 
 .site-marquee {
@@ -290,6 +311,59 @@ body {
 
 .site-feature p {
   margin: 0;
+}
+
+/* ---------- Tasteful decor ----------
+   Toggled by set_decor → :root[data-decor]. Softens the 90s treatment into a
+   clean modern look: thin translucent borders (work on any theme via the text
+   color), rounded corners, and no hard shadows or WordArt text-shadow. */
+
+[data-decor="tasteful"] .preview__frame h1 {
+  text-shadow: none;
+}
+
+[data-decor="tasteful"] .site-hero {
+  padding-bottom: 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--site-text, #000) 14%, transparent);
+}
+
+[data-decor="tasteful"] .site-feature {
+  border: 1px solid color-mix(in srgb, var(--site-text, #000) 16%, transparent);
+  border-radius: 12px;
+  box-shadow: none;
+  padding: 18px 20px;
+}
+
+[data-decor="tasteful"] .site-feature h3 {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+[data-decor="tasteful"] .site-cta {
+  border-width: 1px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+[data-decor="tasteful"] .site-cta:hover {
+  transform: none;
+  box-shadow: none;
+  opacity: 0.85;
+}
+
+[data-decor="tasteful"] .site-cta:active {
+  transform: translateY(1px);
+}
+
+[data-decor="tasteful"] .site-tools h3 {
+  border-bottom-width: 1px;
+}
+
+[data-decor="tasteful"] .site-marquee {
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+  border-bottom: 1px solid color-mix(in srgb, var(--site-bg, #fff) 30%, transparent);
 }
 
 /* ---------- Debug toggle + drawer (bottom-left) ---------- */
