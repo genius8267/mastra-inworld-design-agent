@@ -1,9 +1,5 @@
-const $log = document.getElementById("log");
 const $frame = document.getElementById("preview-frame");
 const $marqueeHost = document.getElementById("marquee-host");
-const $debugToggle = document.getElementById("debug-toggle");
-const $debugDrawer = document.getElementById("debug-drawer");
-const $debugClear = document.getElementById("debug-clear");
 
 let loadedFonts = new Set();
 let voiceStatus = "off"; // "off" | "connecting" | "on"
@@ -39,22 +35,6 @@ function escape(s) {
     '"': "&quot;",
     "'": "&#39;",
   })[c]);
-}
-
-function appendMessage(role, content) {
-  const li = document.createElement("li");
-  li.dataset.role = role;
-  const label = document.createElement("span");
-  label.className = "bubble-label";
-  label.textContent = role;
-  const bubble = document.createElement("div");
-  bubble.className = "bubble";
-  bubble.textContent = content;
-  li.appendChild(label);
-  li.appendChild(bubble);
-  $log.appendChild(li);
-  $log.scrollTop = $log.scrollHeight;
-  return bubble;
 }
 
 function ensureFont(family) {
@@ -189,25 +169,11 @@ function applyVoiceStatusToCta() {
 async function loadInitialState() {
   const res = await fetch("/api/state");
   if (!res.ok) {
-    appendMessage("system", `Could not load initial state (${res.status})`);
+    console.error(`Could not load initial state (${res.status})`);
     return;
   }
   render(await res.json());
 }
-
-/* ---------- Debug drawer ---------- */
-
-function setDebugOpen(open) {
-  $debugDrawer.hidden = !open;
-  $debugToggle.setAttribute("aria-pressed", open ? "true" : "false");
-}
-
-$debugToggle.addEventListener("click", () => {
-  setDebugOpen($debugDrawer.hidden);
-});
-$debugClear.addEventListener("click", () => {
-  $log.innerHTML = "";
-});
 
 /* ---------- Voice (Inworld Realtime via WebSocket) ---------- */
 
@@ -239,7 +205,6 @@ const voice = {
   flushTimer: null,
   outCursor: 0,
   activeAudio: new Set(),
-  bubbles: { user: null, assistant: null },
   /** Response id stamped on the most recent `audio.header`. The next binary
    *  frame is assumed to belong to this response. */
   pendingResponseId: null,
@@ -275,18 +240,6 @@ function setVoiceUI(state) {
   voice.active = state === "on";
   voiceStatus = state;
   applyVoiceStatusToCta();
-}
-
-function appendTranscript(role, text) {
-  if (text === "\n") {
-    voice.bubbles[role] = null;
-    return;
-  }
-  if (!voice.bubbles[role]) {
-    voice.bubbles[role] = appendMessage(role, "");
-  }
-  voice.bubbles[role].textContent += text;
-  $log.scrollTop = $log.scrollHeight;
 }
 
 function playPcmChunk(i16) {
@@ -369,27 +322,19 @@ function handleVoiceMessage(data) {
   switch (msg.type) {
     case "ready":
       setVoiceUI("on");
-      appendMessage("system", "voice on — say what to change.");
-      break;
-    case "transcript":
-      appendTranscript(msg.role, msg.text);
       break;
     case "state":
       try { render(msg.state); } catch {}
       break;
-    case "tool": {
-      const name = msg.toolName || "tool";
-      appendMessage("system", `tool: ${name}(${JSON.stringify(msg.args || {})})`);
-      markToolUsed(name);
+    case "tool":
+      markToolUsed(msg.toolName || "tool");
       break;
-    }
     case "interrupted":
       // Mark the response as cancelled BEFORE wiping the queue, so any
       // in-flight binary frames that arrive in the next few ms get dropped
       // instead of scheduled on top of fresh audio.
       if (msg.responseId) voice.cancelledResponseIds.add(msg.responseId);
       stopAllAudio();
-      voice.bubbles.assistant = null;
       break;
     case "speaking.done":
       // End of one TTS response. Forget the cancellation flag — the id is
@@ -401,7 +346,7 @@ function handleVoiceMessage(data) {
       voice.pendingResponseId = msg.responseId || null;
       break;
     case "error":
-      appendMessage("system", `voice error: ${msg.message ?? "unknown"}`);
+      console.warn(`voice error: ${msg.message ?? "unknown"}`);
       break;
     default:
       // Unknown control message — ignore for forward compatibility.
@@ -441,14 +386,14 @@ async function startVoice() {
     });
     ws.addEventListener("message", (e) => handleVoiceMessage(e.data));
     ws.addEventListener("close", () => {
-      if (voice.active) appendMessage("system", "voice stream disconnected");
+      if (voice.active) console.warn("voice stream disconnected");
       stopVoice(false);
     });
     ws.addEventListener("error", () => {
-      appendMessage("system", "voice connection error");
+      console.warn("voice connection error");
     });
   } catch (err) {
-    appendMessage("system", `voice start failed: ${err?.message ?? err}`);
+    console.error(`voice start failed: ${err?.message ?? err}`);
     await stopVoice(false);
   }
 }
@@ -478,8 +423,6 @@ async function stopVoice(closeSocket = true) {
   if (voice.ctxIn) { try { await voice.ctxIn.close(); } catch {} voice.ctxIn = null; }
   if (voice.ctxOut) { try { await voice.ctxOut.close(); } catch {} voice.ctxOut = null; }
   voice.pending.length = 0;
-  voice.bubbles.user = null;
-  voice.bubbles.assistant = null;
   voice.active = false;
   setVoiceUI("off");
 }

@@ -4,10 +4,7 @@
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
     Arial, sans-serif;
   --bg: #1a1a20;
-  --panel: rgba(28, 28, 36, 0.9);
-  --panel-border: rgba(255, 255, 255, 0.12);
   --text: #f5f5f8;
-  --muted: #8a8a98;
 }
 
 * {
@@ -366,117 +363,6 @@ body {
   border-bottom: 1px solid color-mix(in srgb, var(--site-bg, #fff) 30%, transparent);
 }
 
-/* ---------- Debug toggle + drawer (bottom-left) ---------- */
-
-.debug-toggle {
-  position: fixed;
-  bottom: 20px;
-  left: 20px;
-  z-index: 20;
-  padding: 6px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 4px;
-  background: #1f1f27;
-  color: var(--muted);
-  font: inherit;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.debug-toggle:hover {
-  color: var(--text);
-  border-color: rgba(255, 255, 255, 0.35);
-}
-
-.debug-toggle[aria-pressed="true"] {
-  color: var(--text);
-}
-
-.debug-drawer {
-  position: fixed;
-  left: 20px;
-  bottom: 64px;
-  z-index: 15;
-  width: min(440px, calc(100vw - 40px));
-  max-height: 50vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.debug-drawer[hidden] {
-  display: none;
-}
-
-.debug-drawer__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--panel-border);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.debug-drawer__log {
-  list-style: none;
-  margin: 0;
-  padding: 12px 14px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.debug-drawer__log li {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.debug-drawer__log .bubble-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.debug-drawer__log li[data-role="user"] .bubble {
-  color: #cdd3ff;
-}
-
-.debug-drawer__log li[data-role="system"] .bubble {
-  color: var(--muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-  font-size: 12px;
-}
-
-.ghost {
-  background: transparent;
-  border: 1px solid var(--panel-border);
-  color: var(--muted);
-  padding: 4px 10px;
-  border-radius: 4px;
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.ghost:hover {
-  color: var(--text);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
 @media (max-width: 720px) {
   .preview__frame {
     padding: 80px clamp(16px, 4vw, 32px) calc(140px + env(safe-area-inset-bottom, 0px));
@@ -491,15 +377,5 @@ body {
   }
   .site-cta__main {
     font-size: calc(1.2em * var(--site-scale, 1));
-  }
-  .debug-toggle {
-    bottom: 14px;
-    left: 14px;
-  }
-  .debug-drawer {
-    left: 12px;
-    right: 12px;
-    width: auto;
-    bottom: 80px;
   }
 }
