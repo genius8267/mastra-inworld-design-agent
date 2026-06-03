@@ -47,7 +47,7 @@ export const defaults: SiteState = {
   copy: {
     headline: "My design is lacking. Can you help me?",
     subheadline:
-      "This is my landing page. It uses default browser fonts, default colors, and zero styling. It is honest, but it is ugly.",
+      "This is my landing page. It is stuck in 1996 — Times New Roman, hard drop shadows, double-ruled dividers, and a scrolling marquee. It is honest, but my goodness it is loud.",
     cta: "CLICK HERE!\n(to start the redesign)",
     body: "Press the button below and start talking. Tell me what to change — colors, fonts, the headline you're reading right now, the layout, anything. I will redesign myself live.",
   },

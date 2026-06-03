@@ -21,10 +21,14 @@ export function makeApplyPresetTool(siteState: SiteStateStore) {
     inputSchema: z.object({
       name: preset.describe("Preset name"),
     }),
-    outputSchema: z.object({ name: preset }),
+    outputSchema: z.object({
+      name: preset,
+      theme: z.object({ bg: z.string(), text: z.string(), accent: z.string() }),
+      fontFamily: z.string(),
+    }),
     execute: async (input) => {
-      siteState.applyPreset(input.name);
-      return { name: input.name };
+      const next = siteState.applyPreset(input.name);
+      return { name: input.name, theme: next.theme, fontFamily: next.typography.fontFamily };
     },
   });
 }

@@ -74,6 +74,7 @@ The included [`render.yaml`](render.yaml) deploys everything as **one web servic
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | no | Enable Mastra Studio at `/admin`. Unset = disabled. |
 | `PORT` | no | Public server port (default 4111) |
 | `STUDIO_PORT` | no | Internal Studio port (default 4112, loopback only) |
+| `INWORLD_REALTIME_MODEL` | no | Realtime voice LLM via Inworld's router (default `anthropic/claude-sonnet-4-6`) |
 | `INWORLD_TEXT_MODEL` | no | Studio text-chat model via Inworld's router (default `openai/gpt-4.1`) |
 | `DATABASE_URL` | no | Shared Studio-edits DB (default `file:./data/mastra.db`) |
 | `PUBLIC_AGENT_STATUS` | no | `published` (default: edits go live on Activate) or `draft` (live on save) |

@@ -49,9 +49,13 @@ body {
 }
 
 .preview__frame h1 {
-  font-size: calc(2em * var(--site-scale, 1));
-  margin: 0.67em 0;
+  font-size: calc(2.4em * var(--site-scale, 1));
+  margin: 0.5em 0;
   font-weight: bold;
+  line-height: 1.05;
+  /* WordArt-grade hard drop shadow in the accent color. Recolors with the
+     theme, so the agent's palette choices keep it coherent. */
+  text-shadow: 4px 4px 0 var(--site-accent, #0000ee);
 }
 
 .preview__frame h3 {
@@ -66,6 +70,9 @@ body {
 
 .site-hero {
   margin-bottom: 24px;
+  padding-bottom: 24px;
+  /* 90s section rule. */
+  border-bottom: 5px double var(--site-text, #000000);
 }
 
 .site-hero[data-alignment="center"] {
@@ -110,12 +117,25 @@ body {
   gap: 14px;
   color: var(--site-accent, #0000ee);
   background: var(--site-bg, #ffffff);
-  border: 2px solid currentColor;
+  border: 3px solid currentColor;
   padding: 16px 36px;
   cursor: pointer;
   text-align: center;
   pointer-events: auto;
   max-width: 100%;
+  /* Chunky 90s button: hard shadow + a real press-down on click. */
+  box-shadow: 6px 6px 0 var(--site-text, #000000);
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+.site-cta:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 8px 8px 0 var(--site-text, #000000);
+}
+
+.site-cta:active {
+  transform: translate(6px, 6px);
+  box-shadow: 0 0 0 var(--site-text, #000000);
 }
 
 .site-cta__label {
@@ -161,10 +181,10 @@ body {
 }
 
 .site-features {
-  margin-top: 24px;
+  margin-top: 32px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
+  gap: 28px;
 }
 
 .site-tools {
@@ -173,6 +193,11 @@ body {
 
 .site-tools h3 {
   margin: 0 0 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 3px solid var(--site-accent, #0000ee);
+  display: inline-block;
+  padding-bottom: 2px;
 }
 
 .site-tools__list {
@@ -241,13 +266,26 @@ body {
   padding: 14px 0;
   background: var(--site-text, #000000);
   color: var(--site-bg, #ffffff);
-  font-size: 18px;
+  font-size: 20px;
   font-weight: bold;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-bottom: 4px solid var(--site-accent, #0000ee);
+}
+
+/* Feature cards: 90s "card with a hard drop shadow" treatment. Border in the
+   text color, offset shadow in the accent — both recolor with the theme. */
+.site-feature {
+  border: 3px solid var(--site-text, #000000);
+  background: var(--site-bg, #ffffff);
+  box-shadow: 7px 7px 0 var(--site-accent, #0000ee);
+  padding: 16px 18px;
 }
 
 .site-feature h3 {
-  margin: 0 0 4px;
+  margin: 0 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .site-feature p {
