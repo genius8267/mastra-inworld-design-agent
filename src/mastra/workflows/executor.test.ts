@@ -1,7 +1,42 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DurableExecutor } from "./executor";
+import { DurableExecutor, type StepExecutor } from "./executor";
 import { InMemoryJournal } from "./journal";
+
+describe("executor: StepExecutor seam (CC-1)", () => {
+  it("DurableExecutor is structurally assignable to StepExecutor", () => {
+    // Compile-time guard: if the seam shape drifts, this assignment fails tsc.
+    const seam: StepExecutor = new DurableExecutor(new InMemoryJournal(), "cc1");
+    assert.equal(typeof seam.execute, "function");
+  });
+
+  it("execute() runs at most once and returns the plain result (not the outcome)", async () => {
+    const seam: StepExecutor = new DurableExecutor(new InMemoryJournal(), "cc1-run");
+    let calls = 0;
+    const run = () => {
+      calls += 1;
+      return { v: calls };
+    };
+    const first = await seam.execute("s", run);
+    const second = await seam.execute("s", run);
+    assert.deepEqual(first, { v: 1 });
+    assert.deepEqual(second, { v: 1 }); // reused recorded result
+    assert.equal(calls, 1); // at-most-once preserved through the seam
+  });
+
+  it("execute() journals completed/failed just like runStepOnce", async () => {
+    const journal = new InMemoryJournal();
+    const executor = new DurableExecutor(journal, "cc1-journal");
+    await executor.execute("ok", () => 1);
+    await executor
+      .execute("bad", () => {
+        throw new Error("boom");
+      })
+      .catch(() => {});
+    const statuses = journal.all().map((e) => e.status);
+    assert.deepEqual(statuses.sort(), ["completed", "failed"]);
+  });
+});
 
 describe("executor: at-most-once step", () => {
   it("runs the effect once and records a completed journal entry", async () => {

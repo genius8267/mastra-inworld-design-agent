@@ -21,9 +21,21 @@ export interface StepOutcome<T> {
   reused: boolean;
 }
 
+/**
+ * The registered-executor seam consumed by the designer's tools (CONTRACT-CHANGE
+ * CC-1). The injected executor need only expose this — `execute` runs `run` at
+ * most once for `step` and returns its result, journaling completed/failed per
+ * the Q1 3-state ruling. Realtime-lane declares an identical interface on its
+ * side; structural typing makes DurableExecutor assignable to both. Extra
+ * members (runStepOnce, getStep, listSteps, runId) are fine — not required here.
+ */
+export interface StepExecutor {
+  execute<T>(step: string, run: () => T | Promise<T>): Promise<T>;
+}
+
 const parseResult = <T>(s: string | null): T => (s == null ? undefined : (JSON.parse(s) as T)) as T;
 
-export class DurableExecutor {
+export class DurableExecutor implements StepExecutor {
   readonly runId: string;
   readonly #journal: Journal;
 
@@ -85,6 +97,16 @@ export class DurableExecutor {
       updatedAt: Date.now(),
     });
     return { result, reused: false };
+  }
+
+  /**
+   * StepExecutor seam (CC-1): run `run` at most once for `step`, returning its
+   * result directly (the StepOutcome's `reused` flag is dropped — callers that
+   * need it use runStepOnce). Journals completed/failed exactly as runStepOnce.
+   */
+  async execute<T>(step: string, run: () => T | Promise<T>): Promise<T> {
+    const { result } = await this.runStepOnce<T>(step, run);
+    return result;
   }
 
   /** This run's ledger record for `stepId` (undefined = absent). */

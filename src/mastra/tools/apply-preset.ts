@@ -1,7 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import type { SiteStateStore } from "../state/site-state";
-import type { DurableExecutor } from "../workflows/executor";
+import type { StepExecutor } from "../workflows/executor";
 
 const preset = z.enum(["default", "dark", "cream", "ocean", "sunset", "mono", "forest", "neon"]);
 
@@ -16,7 +16,7 @@ const preset = z.enum(["default", "dark", "cream", "ocean", "sunset", "mono", "f
  * (a non-idempotent-in-context effect), so re-applying the same preset must run
  * again rather than dedupe to a stale recorded result.
  */
-export function makeApplyPresetTool(siteState: SiteStateStore, executor?: DurableExecutor) {
+export function makeApplyPresetTool(siteState: SiteStateStore, executor?: StepExecutor) {
   let seq = 0;
   return createTool({
     id: "apply_preset",
@@ -36,8 +36,7 @@ export function makeApplyPresetTool(siteState: SiteStateStore, executor?: Durabl
         return { name: input.name, theme: next.theme, fontFamily: next.typography.fontFamily };
       };
       if (!executor) return apply();
-      const { result } = await executor.runStepOnce(`apply_preset#${seq++}:${input.name}`, apply);
-      return result;
+      return executor.execute(`apply_preset#${seq++}:${input.name}`, apply);
     },
   });
 }
