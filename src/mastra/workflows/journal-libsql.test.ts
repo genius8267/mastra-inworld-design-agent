@@ -90,4 +90,20 @@ describe("LibSqlJournal: durable 3-state round-trip", () => {
     assert.equal(b.reused, true);
     assert.deepEqual(b.result, { n: 1 });
   });
+
+  it("persists and replays a void result without rerunning the effect", async () => {
+    let calls = 0;
+    const first = new DurableExecutor(open(), "void-run");
+    const initial = await first.execute("void", () => {
+      calls += 1;
+    });
+    assert.equal(initial, undefined);
+
+    const reopened = new DurableExecutor(open(), "void-run");
+    const replayed = await reopened.execute("void", () => {
+      calls += 1;
+    });
+    assert.equal(replayed, undefined);
+    assert.equal(calls, 1);
+  });
 });

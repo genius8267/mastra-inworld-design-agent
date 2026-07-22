@@ -31,6 +31,26 @@ const depsSatisfied = (node: ScheduleNode, completed: ReadonlySet<string>): bool
 const enabled = (node: ScheduleNode, results: ResultMap): boolean =>
   node.enabledWhen ? node.enabledWhen(results) : true;
 
+const effectivelyDisabled = (
+  node: ScheduleNode,
+  nodesById: ReadonlyMap<string, ScheduleNode>,
+  completed: ReadonlySet<string>,
+  results: ResultMap,
+  visiting: ReadonlySet<string> = new Set(),
+): boolean => {
+  if (!enabled(node, results)) return true;
+  if (visiting.has(node.id)) return false;
+
+  const nextVisiting = new Set(visiting).add(node.id);
+  return (node.deps ?? []).some((depId) => {
+    if (completed.has(depId)) return false;
+    const dependency = nodesById.get(depId);
+    return dependency
+      ? effectivelyDisabled(dependency, nodesById, completed, results, nextVisiting)
+      : false;
+  });
+};
+
 /**
  * The steps runnable RIGHT NOW: deps all completed, branch-enabled, not yet
  * completed. Returning more than one ⇒ they are independent and run in parallel;
@@ -51,8 +71,8 @@ export function nextRunnable(
 
 /**
  * The schedule is settled when nothing is runnable AND every node is either
- * completed or currently disabled (a branch path not taken). Guards against
- * calling a run "done" while an enabled, dep-satisfied step still waits.
+ * completed, directly disabled, or downstream of a disabled dependency. Missing
+ * dependencies and cycles remain unsettled rather than being mistaken for skips.
  */
 export function isSettled(
   nodes: ScheduleNode[],
@@ -60,7 +80,10 @@ export function isSettled(
   results: ResultMap = {},
 ): boolean {
   if (nextRunnable(nodes, completed, results).length > 0) return false;
-  return nodes.every((node) => completed.has(node.id) || !enabled(node, results));
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  return nodes.every(
+    (node) => completed.has(node.id) || effectivelyDisabled(node, nodesById, completed, results),
+  );
 }
 
 /**

@@ -10,7 +10,7 @@ describe("executor: StepExecutor seam (CC-1)", () => {
     assert.equal(typeof seam.execute, "function");
   });
 
-  it("execute() runs at most once and returns the plain result (not the outcome)", async () => {
+  it("execute() runs once and returns the plain result (not the outcome)", async () => {
     const seam: StepExecutor = new DurableExecutor(new InMemoryJournal(), "cc1-run");
     let calls = 0;
     const run = () => {
@@ -21,7 +21,7 @@ describe("executor: StepExecutor seam (CC-1)", () => {
     const second = await seam.execute("s", run);
     assert.deepEqual(first, { v: 1 });
     assert.deepEqual(second, { v: 1 }); // reused recorded result
-    assert.equal(calls, 1); // at-most-once preserved through the seam
+    assert.equal(calls, 1);
   });
 
   it("execute() journals completed/failed just like runStepOnce", async () => {
@@ -71,8 +71,45 @@ describe("executor: at-most-once step", () => {
     const second = await executor.runStepOnce("s1", effect);
 
     assert.deepEqual([first.reused, second.reused], [false, true]);
-    assert.equal(calls, 1); // proves at-most-once
-    assert.equal(second.result, 1); // the recorded value, not a re-run
+    assert.equal(calls, 1);
+    assert.equal(second.result, 1);
+  });
+
+  it("coalesces overlapping calls for the same step on one live executor", async () => {
+    const executor = new DurableExecutor(new InMemoryJournal(), "run-concurrent");
+    let calls = 0;
+    let signalStarted!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const effect = async () => {
+      calls += 1;
+      signalStarted();
+      await gate;
+      return { value: 42 };
+    };
+
+    const first = executor.runStepOnce("s", effect);
+    const second = executor.runStepOnce("s", effect);
+    await started;
+    assert.equal(calls, 1);
+    release();
+
+    const outcomes = await Promise.all([first, second]);
+    assert.equal(calls, 1);
+    assert.deepEqual(
+      outcomes.map((outcome) => outcome.result),
+      [{ value: 42 }, { value: 42 }],
+    );
+    // Both callers share the fresh in-flight attempt; neither is a replay.
+    assert.deepEqual(
+      outcomes.map((outcome) => outcome.reused),
+      [false, false],
+    );
   });
 
   it("keeps distinct step ids independent within a run", async () => {
@@ -124,6 +161,22 @@ describe("executor: 3-state journal (absent / completed / failed)", () => {
     );
     const entry = await executor.getStep("bad");
     assert.equal(entry?.status, "failed");
+  });
+
+  it("failed — bare function and symbol results terminalize as failed", async () => {
+    const executor = new DurableExecutor(new InMemoryJournal(), "run-nonrepresentable");
+    const values: Array<[string, unknown]> = [
+      ["function", () => undefined],
+      ["symbol", Symbol("result")],
+    ];
+
+    for (const [stepId, value] of values) {
+      await assert.rejects(
+        () => executor.runStepOnce(stepId, () => value),
+        /not JSON-serializable/,
+      );
+      assert.equal((await executor.getStep(stepId))?.status, "failed");
+    }
   });
 
   it("the journal never persists a 'running' state — only completed or failed", async () => {

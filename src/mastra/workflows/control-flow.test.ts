@@ -73,6 +73,28 @@ describe("control-flow: isSettled", () => {
     // Took the hot path; cold is disabled and never runs → settled.
     assert.equal(isSettled(nodes, new Set(["decide", "hot"]), { decide: "hot" }), true);
   });
+
+  it("treats descendants of a disabled branch as skipped", () => {
+    const nodes: ScheduleNode[] = [
+      { id: "decide" },
+      { id: "hot", deps: ["decide"], enabledWhen: (r) => r["decide"] === "hot" },
+      { id: "cold", deps: ["decide"], enabledWhen: (r) => r["decide"] === "cold" },
+      { id: "cold-child", deps: ["cold"] },
+    ];
+    const completed = new Set(["decide", "hot"]);
+    const results = { decide: "hot" };
+    assert.deepEqual(nextRunnable(nodes, completed, results), []);
+    assert.equal(isSettled(nodes, completed, results), true);
+  });
+
+  it("keeps cycles and missing dependencies unsettled", () => {
+    const cycle: ScheduleNode[] = [
+      { id: "a", deps: ["b"] },
+      { id: "b", deps: ["a"] },
+    ];
+    assert.equal(isSettled(cycle, new Set()), false);
+    assert.equal(isSettled([{ id: "a", deps: ["missing"] }], new Set()), false);
+  });
 });
 
 describe("control-flow: expandForeach", () => {

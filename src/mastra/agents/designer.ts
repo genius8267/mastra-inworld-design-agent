@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Agent } from "@mastra/core/agent";
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
@@ -95,8 +96,9 @@ function makeExecutedApplyPresetTool(siteState: SiteStateStore, executor: StepEx
       theme: z.object({ bg: z.string(), text: z.string(), accent: z.string() }),
       fontFamily: z.string(),
     }),
-    execute: async (input) => {
-      const next = await executor.execute(`apply_preset:${input.name}`, () =>
+    execute: async (input, context) => {
+      const invocationId = context.agent?.toolCallId || randomUUID();
+      const next = await executor.execute(`apply_preset:${invocationId}`, () =>
         siteState.applyPreset(input.name),
       );
       return { name: input.name, theme: next.theme, fontFamily: next.typography.fontFamily };
