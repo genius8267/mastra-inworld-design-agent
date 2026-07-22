@@ -1,7 +1,9 @@
 import { Agent } from "@mastra/core/agent";
+import { createTool } from "@mastra/core/tools";
+import { z } from "zod";
 import { DEFAULT_OPENAI_MODEL, openai } from "../../llm/openai";
 import { createVoice } from "../../llm/voice";
-import type { SiteStateStore } from "../state/site-state";
+import { presets, type PresetName, type SiteStateStore } from "../state/site-state";
 import { makeSetCopyTool } from "../tools/set-copy";
 import { makeSetLayoutTool } from "../tools/set-layout";
 import { makeSetThemeTool } from "../tools/set-theme";
@@ -46,6 +48,63 @@ Rules:
 - Feature cards are indexed 0, 1, 2... When the user says "the second card", that's index 1.`;
 
 /**
+ * The durable step executor realtime-lane consumes from engine-lane (Q2).
+ *
+ * Kept intentionally minimal — the single method `apply_preset` routes
+ * through. `run` performs the state mutation; the executor wraps it as one
+ * journaled step (recording completed/failed) and returns its result. The
+ * concrete executor — its journal, LibSQL persistence, and at-most-once
+ * replay — is engine-lane's; this is only the consumer-side seam. See the
+ * CONTRACT-CHANGE note in docs/notes/lane-status.md: engine-lane's registered
+ * executor must be structurally assignable to this shape.
+ */
+export interface StepExecutor {
+  execute<T>(step: string, run: () => T | Promise<T>): Promise<T>;
+}
+
+/** Optional test/integration seams injected into a designer agent. */
+export interface DesignerDeps {
+  /**
+   * When provided, `apply_preset` runs as a journaled step through this
+   * executor instead of mutating the store directly (the Q2 slice). Injected
+   * in tests to prove consumption; production call sites keep their
+   * zero-arg-change shape, so `apply_preset` there stays on the direct path.
+   */
+  executor?: StepExecutor;
+}
+
+const presetEnum = z.enum(Object.keys(presets) as [PresetName, ...PresetName[]]);
+
+/**
+ * `apply_preset` routed through the durable executor. Same id / input / output
+ * contract as `makeApplyPresetTool` (the direct-path tool), but the preset
+ * application runs as one journaled step so a mid-flight failure is recoverable
+ * and the step is not silently re-applied on replay. Registered only when an
+ * executor is injected; otherwise the direct-path tool is used unchanged.
+ */
+function makeExecutedApplyPresetTool(siteState: SiteStateStore, executor: StepExecutor) {
+  return createTool({
+    id: "apply_preset",
+    description:
+      "Apply a named visual preset (palette + sometimes font). Useful as a one-shot reskin.",
+    inputSchema: z.object({
+      name: presetEnum.describe("Preset name"),
+    }),
+    outputSchema: z.object({
+      name: presetEnum,
+      theme: z.object({ bg: z.string(), text: z.string(), accent: z.string() }),
+      fontFamily: z.string(),
+    }),
+    execute: async (input) => {
+      const next = await executor.execute(`apply_preset:${input.name}`, () =>
+        siteState.applyPreset(input.name),
+      );
+      return { name: input.name, theme: next.theme, fontFamily: next.typography.fontFamily };
+    },
+  });
+}
+
+/**
  * Build a fresh designer agent for one voice session. Each session owns:
  *   - its own `SiteStateStore` (no cross-user visual bleed)
  *   - its own `InworldRealtimeVoice` connection
@@ -56,8 +115,14 @@ Rules:
  *
  * `instructionsOverride` carries the published Studio edit (see
  * resolve-instructions.ts); the code-defined prompt above is the baseline.
+ * `deps.executor`, when present, routes `apply_preset` through the durable
+ * executor (Q2); production call sites omit it and keep the direct path.
  */
-export function createDesigner(siteState: SiteStateStore, instructionsOverride?: string) {
+export function createDesigner(
+  siteState: SiteStateStore,
+  instructionsOverride?: string,
+  deps?: DesignerDeps,
+) {
   const voice = createVoice();
   return new Agent({
     id: "designer",
@@ -72,7 +137,9 @@ export function createDesigner(siteState: SiteStateStore, instructionsOverride?:
       add_feature: makeAddFeatureTool(siteState),
       remove_feature: makeRemoveFeatureTool(siteState),
       update_feature: makeUpdateFeatureTool(siteState),
-      apply_preset: makeApplyPresetTool(siteState),
+      apply_preset: deps?.executor
+        ? makeExecutedApplyPresetTool(siteState, deps.executor)
+        : makeApplyPresetTool(siteState),
       set_marquee: makeSetMarqueeTool(siteState),
       set_decor: makeSetDecorTool(siteState),
       reset: makeResetTool(siteState),
