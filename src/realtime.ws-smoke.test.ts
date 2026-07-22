@@ -1,8 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { once } from "node:events";
-import { createServer } from "node:net";
 import path from "node:path";
 import { WebSocket, fetch as undiciFetch } from "undici";
 
@@ -66,21 +64,6 @@ class SmokeSequence {
   }
 }
 
-async function getEphemeralPort(): Promise<number> {
-  const server = createServer();
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-  const address = server.address();
-  if (!address || typeof address === "string") {
-    server.close();
-    throw new Error("failed to allocate an ephemeral TCP port");
-  }
-  await new Promise<void>((resolve, reject) => {
-    server.close((err) => (err ? reject(err) : resolve()));
-  });
-  return address.port;
-}
-
 async function waitForState(url: string, deadlineMs: number): Promise<void> {
   const start = Date.now();
   for (;;) {
@@ -126,14 +109,13 @@ test(
       return;
     }
 
-    const port = await getEphemeralPort();
-    // Boot the real server as a subprocess. ADMIN_* stays unset so Studio never
-    // starts; the server owns only the allocated ephemeral port.
+    // Let the child bind port 0 itself: the OS selects and reserves the port in
+    // one operation, with no close-before-spawn handoff race.
     const child = spawn(process.execPath, ["--import", "tsx", path.join("src", "index.ts")], {
       cwd: PROJECT_ROOT,
       env: {
         ...process.env,
-        PORT: String(port),
+        PORT: "0",
         HOST: "127.0.0.1",
         ADMIN_USERNAME: "",
         ADMIN_PASSWORD: "",
@@ -141,7 +123,7 @@ test(
       stdio: ["ignore", "pipe", "inherit"],
     });
 
-    const childReady = new Promise<void>((resolve, reject) => {
+    const childReady = new Promise<number>((resolve, reject) => {
       const guard = setTimeout(
         () => reject(new Error("spawned server did not report readiness in time")),
         20_000,
@@ -150,9 +132,10 @@ test(
       child.stdout?.setEncoding("utf8");
       child.stdout?.on("data", (chunk: string) => {
         stdout += chunk;
-        if (stdout.includes(`design-agent server on http://localhost:${port}`)) {
+        const match = stdout.match(/design-agent server on http:\/\/localhost:(\d+)/);
+        if (match) {
           clearTimeout(guard);
-          resolve();
+          resolve(Number(match[1]));
         }
       });
     });
@@ -169,7 +152,7 @@ test(
     const sequence = new SmokeSequence();
 
     try {
-      await Promise.race([childReady, childFailure]);
+      const port = await Promise.race([childReady, childFailure]);
       await Promise.race([
         waitForState(`http://127.0.0.1:${port}/api/state`, 20_000),
         childFailure,
