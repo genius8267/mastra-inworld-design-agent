@@ -4,6 +4,10 @@ import type { SiteStateStore } from "../state/site-state";
 
 const preset = z.enum(["default", "dark", "cream", "ocean", "sunset", "mono", "forest", "neon"]);
 
+// Direct-path tool: applies the preset to the session's store and returns the
+// post-mutation snapshot. The Q2 durable-executor routing is owned by
+// realtime-lane's designer-level wrapper (the single ratified consumption path);
+// this tool stays executor-free so production zero-arg call sites are unchanged.
 export function makeApplyPresetTool(siteState: SiteStateStore) {
   return createTool({
     id: "apply_preset",
