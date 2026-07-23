@@ -127,15 +127,29 @@ export class DurableExecutor implements StepExecutor {
       // result is fine — it encodes to the sentinel.
       serialized = encodeResult(result);
     } catch (err) {
-      await this.#journal.put({
-        runId: this.runId,
-        stepId,
-        status: "failed",
-        result: null,
-        error: String((err as Error)?.message ?? err),
-        attempt,
-        updatedAt: Date.now(),
-      });
+      try {
+        await this.#journal.put({
+          runId: this.runId,
+          stepId,
+          status: "failed",
+          result: null,
+          error: String((err as Error)?.message ?? err),
+          attempt,
+          updatedAt: Date.now(),
+        });
+      } catch (journalErr) {
+        // The journal write must never MASK the effect error: the caller
+        // needs E1 (why the step failed), not E2 (why the ledger write
+        // failed). Log E2 and attach it to E1, then rethrow E1 below.
+        console.error(
+          `[executor] journal write failed while terminalizing step "${stepId}" ` +
+            `(run ${this.runId}) — surfacing the effect error; journal error:`,
+          journalErr,
+        );
+        if (err instanceof Error) {
+          (err as Error & { journalError?: unknown }).journalError = journalErr;
+        }
+      }
       throw err;
     }
 

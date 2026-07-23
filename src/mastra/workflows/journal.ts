@@ -80,14 +80,22 @@ export class LibSqlJournal implements Journal {
   readonly #client: Client;
   #ready: Promise<void> | null = null;
 
-  constructor(url: string = process.env.DATABASE_URL ?? "file:./data/mastra.db") {
-    if (url.startsWith("file:")) {
+  constructor(url: string = process.env.DATABASE_URL ?? "file:./data/mastra.db", client?: Client) {
+    if (!client && url.startsWith("file:")) {
       mkdirSync(path.dirname(url.slice("file:".length)), { recursive: true });
     }
-    this.#client = createClient({ url });
+    // Injectable client (tests) — mirrors the injectable-transport split above.
+    this.#client = client ?? createClient({ url });
   }
 
   #ensure(): Promise<void> {
+    // Rejection-safe memoization: the reset is attached via .catch ON THE
+    // ASSIGNED CHAIN and rethrows, so (i) there is exactly one chain — no
+    // unhandled-rejection double-fire, (ii) every caller awaiting the failing
+    // init (including concurrent ones) still observes the rejection, and
+    // (iii) only calls made AFTER the failure retry the schema create. The
+    // previous `??=` without the catch cached a rejected promise forever,
+    // permanently poisoning the journal after one transient failure.
     this.#ready ??= this.#client
       .execute(
         `CREATE TABLE IF NOT EXISTS workflow_journal (
@@ -101,7 +109,11 @@ export class LibSqlJournal implements Journal {
            PRIMARY KEY (run_id, step_id)
          )`,
       )
-      .then(() => undefined);
+      .then(() => undefined)
+      .catch((err: unknown) => {
+        this.#ready = null; // subsequent calls retry; current awaiters still reject
+        throw err;
+      });
     return this.#ready;
   }
 

@@ -8,6 +8,7 @@ import { adminProxy, handleAdminUpgrade, startStudio } from "./admin";
 import { createDesigner, type DesignerAgent } from "./mastra/agents/designer";
 import { resolveDesignerInstructions } from "./mastra/resolve-instructions";
 import { createSiteState, defaults, type SiteStateStore } from "./mastra/state/site-state";
+import { assertWatchdogSeams } from "./watchdog-canary";
 
 const PORT = Number(process.env.PORT ?? 4111);
 
@@ -171,6 +172,10 @@ async function connectVoice(
     client?: { emit: (...args: unknown[]) => boolean };
     sendEvent?: (type: string, data: unknown) => void;
   };
+  // B4 canary: the two monkeypatch seams below are guarded by `if (...)`, so
+  // an SDK bump that removes either would fail silently open (watchdog never
+  // arms). Fail LOUD instead — diagnostic only, never a crash.
+  assertWatchdogSeams(raw);
   // `session.voice === voice` guards: after a recovery swaps the connection,
   // a stale instance must not arm the new session's watchdog.
   if (raw.client) {
